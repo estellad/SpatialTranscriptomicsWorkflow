@@ -1,0 +1,115 @@
+---
+title: "EuroBioc2024"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished presentation. To learn more about Quarto presentations see <https://quarto.org/docs/presentations/>.
+
+## Bullets
+
+When you click the **Render** button a document will be generated that includes:
+
+-   Content authored with markdown
+-   Output from executable code
+
+## Code
+
+When you click the **Render** button a presentation will be generated that includes both content and the output of embedded code. You can embed code like thi
+
+## Install and load packages
+
+```{r}
+# install.packages("devtools")
+devtools::install_github("estellad/SpatialExperimentIO")
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("STexampleData", force = TRUE)
+BiocManager::install("ggspavis", force = TRUE)
+BiocManager::install("VisiumIO", force = TRUE)
+```
+
+```{r}
+library(SpatialExperimentIO)
+library(STexampleData)
+library(ggspavis)
+library(VisiumIO)
+```
+
+Load Xenium data as SpatialExperiment class with SpatialExperimentIO
+
+```{r}
+overlap_barcodes <- intersect(rownames(results), rownames(location))
+```
+
+```{r}
+
+sce <- Janesick_breastCancer_Chromium()
+# QC
+
+vis <- Janesick_breastCancer_Visium()
+
+# QC
+
+xe1 <- Janesick_breastCancer_Xenium_rep1()
+xe2 <- Janesick_breastCancer_Xenium_rep2()
+
+
+
+
+# SpatialExperimentIO -----------------------------------------------------
+devtools::install_github("estellad/SpatialExperimentIO")
+library(SpatialExperimentIO)
+```
+
+```{r}
+plotSpots(vis, annotate = "", feature_col = "symbol", pal = "")
+```
+
+Original H&E zoomed to where the spots are
+
+```{r}
+plotVisium(vis, spots = FALSE, zoom = TRUE)
+```
+
+Empty spots
+
+```{r}
+plotVisiumEmptySpots()
+```
+
+Continuous (nUMI)
+
+```{r}
+
+```
+
+Continuous (Gene name)
+
+```{r}
+
+```
+
+SingleR label plotted spatially
+
+```{r}
+plotSpots(xe_convert, 
+          annotate = "SingleR.labels", 
+          pal = colors, 
+          in_tissue = NULL, 
+          x_coord = "x_centroid", 
+          y_coord = "y_centroid", 
+          point_size = 0.1, 
+          feature_col = "Symbol") + 
+  coord_flip() + 
+  scale_x_reverse()
+```
+
+SingleR label on the UMAP
+
+```{r}
+plotDimRed(xe, plot_type = "UMAP", annotate = "SingleR.labels",
+text_by = "SingleR.labels”, pal = colors, point_size = 0.1)
+```

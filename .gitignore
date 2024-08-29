@@ -1,3 +1,8 @@
+# Local data
+intermediate_data/
+EuroBioc_Senbai_function_archive/
+.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history
