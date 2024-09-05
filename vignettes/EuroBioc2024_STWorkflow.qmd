@@ -1,115 +1,336 @@
 ---
-title: "EuroBioc2024"
+title: "EuroBioc2024 Spatial Transcriptomics Workflow"
 format: html
 editor: visual
+bibliography: citations.bib 
+date: '`r format(Sys.Date(), "%d %B, %Y")`'
+author: "Yixing Estella Dong"
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished presentation. To learn more about Quarto presentations see <https://quarto.org/docs/presentations/>.
-
-## Bullets
-
-When you click the **Render** button a document will be generated that includes:
-
--   Content authored with markdown
--   Output from executable code
-
-## Code
-
-When you click the **Render** button a presentation will be generated that includes both content and the output of embedded code. You can embed code like thi
+In this workflow, we will go through how to read (`SpatialExperimentIO`), use pre-saved example data (`STexampleData`), and visualize (`ggspavis`) spatial transcriptomics (SRT) data at spot and cellular resolution using Bioconductor packages. Given the time limit for this package demo session at the EuroBioc 2024, we leave some detailed analysis steps (e.g. quality control (QC), normalization, etc. ) to the corresponding workflow chapters in the [BestPracticesST](https://lmweber.org/BestPracticesST/) book.
 
 ## Install and load packages
 
 ```{r}
-# install.packages("devtools")
-devtools::install_github("estellad/SpatialExperimentIO")
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-BiocManager::install("STexampleData", force = TRUE)
-BiocManager::install("ggspavis", force = TRUE)
-BiocManager::install("VisiumIO", force = TRUE)
+# # install.packages("devtools")
+# devtools::install_github("estellad/SpatialExperimentIO")
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# BiocManager::install("VisiumIO", force = TRUE)
+# BiocManager::install("STexampleData", force = TRUE)
+# BiocManager::install("ggspavis", force = TRUE)
+# BiocManager::install("scater", force = TRUE)
+# install.packages(c("ggplot2", "randomcoloR", "scales", "plyr", "patchwork", "here"))
 ```
 
-```{r}
+```{r, message = FALSE}
+library(VisiumIO)
 library(SpatialExperimentIO)
 library(STexampleData)
 library(ggspavis)
-library(VisiumIO)
+library(ggplot2)
+library(randomcoloR)
+library(scales)
+library(patchwork)
+library(here)
+library(scater)
 ```
 
-Load Xenium data as SpatialExperiment class with SpatialExperimentIO
+## VisiumIO - Reading
+
+For SRT data at spot level, we have Visium technology. There has been a recent migration of reading Visium data with `SpatialExperiment::read10xVisium()` to `VisiumIO::TENxVisium()`. The example data are taken from `SpatialExperiment` package `/extdata` and stored here for convenience.
 
 ```{r}
-overlap_barcodes <- intersect(rownames(results), rownames(location))
+vispath <- here::here("./inst/extdata/visium_mock_download/")
+list.files(file.path(vispath, "outs"))
+```
+
+The essential files has to be wrapped in an `/outs` folder in a directory. Here is a short demonstration of reading Visium data as a `SpatialExperiment` object.
+
+```{r}
+vis <- VisiumIO::TENxVisium(
+  spacerangerOut = vispath, processing = "raw", images = "lowres"
+)
+vis <- import(vis)
+rownames(vis) <- rowData(vis)$Symbol
+rownames(vis) <- make.unique(rownames(vis))
+```
+
+Have a look at the Visium object.
+
+```{r}
+vis
+```
+
+The above code is subject to updates on the function `VisiumIO::TENxVisium()`. Please refer to the [github repo](https://github.com/waldronlab/VisiumIO) of `VisiumIO.`
+
+## SpatialExperimentIO - Reading
+
+For imaging-based SRT (imSRT) data at cellular resolution, we have Xenium, CosMx, MERSCOPE, STARmap PLUS, and seqFISH platforms. Any additional new imSRT technology will have its reader function added to `SpatialExperimentIO.` As a demonstration, the following example files mimic the structure of a raw Xenium data download. There are two mandatory inputs, the `cell_feature_matrix.h5` for count matrix and the `cells.csv.gz` for metadata, including spot coordinates.
+
+```{r}
+xepath <- here::here("./inst/extdata/xenium_mock_download/outs")
+list.files(xepath)
+```
+
+Alternative count matrix input can be a folder containing `.tsv` and `.mtx` files. In general, raw Xenium download is structured as
+
+```         
+    Xenium_unzipped
+        └── outs 
+            ├── cells.csv.gz 
+            ├── cell_feature_matrix.h5 
+            └── cell_feature_matrix 
+                ├── barcodes.tsv 
+                ├── features.tsv 
+                └── matrix.mtx
+    
+```
+
+Load Xenium data as a `SpatialExperiment` object. Here I manually created a small .h5 file with only 4 genes and 6 cells. The mock files are taken from `SpatialExperimentIO` package `/extdata` and stored here for convenience.
+
+```{r}
+xe_mock <- SpatialExperimentIO::readXeniumSXE(xepath)
+xe_mock
+```
+
+By default, the reader function returns a `SpatialExperiment` object. You can also choose to return a `SingleCellExperiment` object by setting `returnType = "SCE"` in the argument.
+
+For similar reading processes of all other imSRT technologies, please refer to the [github repo](https://github.com/estellad/SpatialExperimentIO) of `SpatialExperimentIO`
+
+## STexampleData - Storing
+
+To easily access an example SRT data from each technology, we used our reader functions, included any additional annotation/metadata contributed by their original vendor or authors, and stored such example data in `STexampleData.`
+
+We will now load the pre-saved Chromium, Visium, Xenium replicate objects in the first Xenium paper by 10x Genomics [@janesick2023high].
+
+```{r}
+sce <- STexampleData::Janesick_breastCancer_Chromium()
+
+vis <- STexampleData::Janesick_breastCancer_Visium()
+
+xe1 <- STexampleData::Janesick_breastCancer_Xenium_rep1()
+xe2 <- STexampleData::Janesick_breastCancer_Xenium_rep2()
+```
+
+We kept this Chromium data in `STexampleData` package because it is a consecutive slice for Visium and Xenium data. Therefore, it can be used as cell type reference for deconvolution and label transfer for Visium and Xenium data, respectively. Have a look at the Chromium data.
+
+```{r}
+sce
+```
+
+Chromium data have had its cell types labeled via computational methods by Janesick et al., 2023. In the `SingleCellExperiment` object, we stored the original annotation as a column in the `colData()`.
+
+```{r}
+table(sce$Annotation)
+```
+
+The palette of cell types in the following visualization will be defined as follow.
+
+```{r}
+set.seed(1)
+celltype_colors <- randomcoloR::distinctColorPalette(length(unique(sce$Annotation)))
+```
+
+The Chromium cell type frequency can we visualized with a bar plot.
+
+```{r, fig.width=12, fig.height=8}
+CD <- data.frame(Annotation = sce$Annotation)
+cnt <- plyr::count(CD$Annotation)
+col_order <- cnt$x[order(cnt$freq, decreasing = TRUE)]
+CD$Annotation <- factor(CD$Annotation,
+                        levels = col_order)
+names(celltype_colors) <- col_order
+
+p <- ggplot(data = CD, aes(x = Annotation, fill = Annotation)) + 
+    geom_bar(aes(y = (..count..)/sum(..count..))) +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+    ylab("Percentage") + ggtitle("Cell-type Frequency in Annotated Chromium") + 
+  scale_fill_manual(values = celltype_colors)
+p
+```
+
+We also have a quick view of the Visium and Xenium replicate 1 data stored as `SpatialExperiment` objects.
+
+```{r}
+vis
 ```
 
 ```{r}
+xe1
+```
 
-sce <- Janesick_breastCancer_Chromium()
-# QC
+## ggspavis - Plotting
 
-vis <- Janesick_breastCancer_Visium()
+We can now plot the gene expression and metadata of interest spatially with `ggspavis`. For Visium, we have the option to overlay spots on top of its companion H&E image. For Xenium, we visualize the cells spatially. For technologies at either spot or cellular resolution, we can also visualize the reduced dimension with on-cluster text annotation.
 
-# QC
+### Visium
 
-xe1 <- Janesick_breastCancer_Xenium_rep1()
-xe2 <- Janesick_breastCancer_Xenium_rep2()
+We display the high resolution H&E pre-stored in the SpatialExperiment object, zoomed to where the spots are. The current funciton `ggspavis::plotVisium()` is compatible with multi-sample visualization. Such functionality is subject to change in the upcoming versions. Here we have only one Visium sample, and `+ facet_grid(NULL)` is used to silence the sample indexing.
 
-
-
-
-# SpatialExperimentIO -----------------------------------------------------
-devtools::install_github("estellad/SpatialExperimentIO")
-library(SpatialExperimentIO)
+```{r, fig.width=6, fig.height=3}
+plotVisium(vis, spots = FALSE, zoom = TRUE) + facet_grid(NULL)
 ```
 
 ```{r}
-plotSpots(vis, annotate = "", feature_col = "symbol", pal = "")
+#TODO: stay tuned  # plotVisiumEmptySpots()
 ```
 
-Original H&E zoomed to where the spots are
+Pre-compute some feature of interest, such as library size (number of UMI counts) per spot, and store it in `colData()`.
 
 ```{r}
-plotVisium(vis, spots = FALSE, zoom = TRUE)
+vis$nUMI <- colSums(counts(vis))
+summary(vis$nUMI)
 ```
 
-Empty spots
+For a continuous feature like nUMI, we can plot it without the H&E image by the following two methods.
+
+```{r, fig.width=10, fig.height=5}
+plotVisium(vis, annotate = "nUMI", pal = "viridis", point_size = 1.5, image = FALSE) + facet_grid(NULL) | 
+plotSpots(vis, annotate = "nUMI", pal = "viridis", point_size = 1)
+```
+
+If we decide to show the spots on top of H&E, we could you `plotVisium()`.
+
+```{r, fig.width=6, fig.height=3}
+plotVisium(vis, annotate = "nUMI", pal = "viridis", zoom = TRUE, point_size = 1.3) + facet_grid(NULL)
+```
+
+Apart from metadata stored in `colData()`. Each gene is expressed through all spots, so the gene expression level can be visualized spatially as well. Here is without H&E image.
+
+```{r, fig.width=6, fig.height=3.5}
+plotSpots(vis, annotate = "ERBB2", pal = "seuratlike")
+```
+
+Here is "ERBB2" expression with the H&E image. We also have the option to show the axis of pixel row and column array in "lowres" image(or "highres", depending on what default image you have in the SpatialExperiment object). Such coordinates were automatically calculated in our function, by multiplying the low or high scaling factor (read from the Visium output .json file) with `pxl_col_in_fullres`, `pxl_col_in_fullres` in the `spatialCoords()` of Visium.
+
+```{r, fig.width=6, fig.height=3.5}
+plotVisium(vis, annotate = "ERBB2", pal = "seuratlike", zoom = TRUE, show_axes = TRUE) + facet_grid(NULL)
+```
+
+Apart from continuous variables, we can visualize categorical labels spatially too. Given the time limit, we pre-computed the discrete clustering result with the spatially-aware domain detection algorithm BayesSpace, hosted on Bioconductor. For steps on how to run BayesSpace, please refer to its [tutorial page](https://www.ezstatconsulting.com/BayesSpace/articles/BayesSpace.html).
 
 ```{r}
-plotVisiumEmptySpots()
+bayeclus <- read.csv(here::here("./inst/extdata/computation_results/BayesSpace_spot_clusters.csv"), row.names = 1)
+head(bayeclus)
+```
+Our clustering and deconvolution were run on post QC objects, so there is a dimension mismatch with the raw Visium object stored in STexampleData. We need to subset our raw Visium object to post QC spots, and to merge in the clustering result by barcode for plotting. 
+```{r}
+dim(bayeclus)
+dim(vis)
+nrow(bayeclus) == ncol(vis)
 ```
 
-Continuous (nUMI)
+After subset to post QC spots, the number of spots match. 
+```{r}
+vis <- vis[, colnames(vis) %in% rownames(bayeclus)]
+dim(vis)
+nrow(bayeclus) == ncol(vis)
+```
+
+First, we check if the clustering result has the same order of barcodes as those in our Visium object. Then, we merge in the clustering column to `colData()`.
+```{r}
+all.equal(rownames(bayeclus), colnames(vis))
+vis$spatial.cluster <- as.factor(bayeclus$spatial.cluster)
+table(vis$spatial.cluster)
+```
+Specify a palette with number of BayesSpace clusters.
+```{r}
+set.seed(3)
+clus_colors <- distinctColorPalette(nlevels(vis$spatial.cluster))
+```
+
+Now we visualize the clustering result spatially. 
+```{r, fig.width=6, fig.height=3}
+plotVisium(vis, annotate = "spatial.cluster", pal = clus_colors, 
+  zoom = TRUE, point_size = 1, facets = NULL) + 
+  guides(fill=guide_legend(ncol = 2, override.aes = list(size = 2)))
+```
+We can also visualize the deconvolution fraction. 
 
 ```{r}
-
+rctddecon <- read.csv(here::here("./inst/extdata/computation_results/RCTD_spot_decon.csv"), row.names = 1)
+colnames(rctddecon) <- sort(names(celltype_colors))
+head(rctddecon)
 ```
-
-Continuous (Gene name)
 
 ```{r}
-
+# TODO: stay tuned # plotVisiumScatterpie
 ```
 
-SingleR label plotted spatially
+### Xenium
+
+Pre-compute per-cell information, such as library size, and store it in `colData()`. Here the library size has been computed for each Xenium replicate in the raw data download as `total_counts` in the metadata. These two replicates show comparable library size.
 
 ```{r}
-plotSpots(xe_convert, 
-          annotate = "SingleR.labels", 
-          pal = colors, 
-          in_tissue = NULL, 
-          x_coord = "x_centroid", 
-          y_coord = "y_centroid", 
-          point_size = 0.1, 
-          feature_col = "Symbol") + 
-  coord_flip() + 
-  scale_x_reverse()
+summary(xe1$total_counts)
+summary(xe2$total_counts)
 ```
 
-SingleR label on the UMAP
+Let us visualize the library size spatially. We intentially rotated the coordinates to have the same orientation as in the Visium plots above.
+
+```{r, fig.width=12, fig.height=6.5, message=FALSE}
+plotSpots(xe1, annotate = "total_counts", in_tissue = NULL, pal = "viridis", point_size = 0.1) + scale_x_reverse() + coord_flip()| 
+  plotSpots(xe2, annotate = "total_counts", in_tissue = NULL, pal = "viridis", point_size = 0.1) + scale_x_reverse() + coord_flip()
+```
+
+We load the pre-computed SingleR result. SingleR is a method to computationally annotate cell types for single-cell RNA sequencing data. We want to quickly obtain some annotations for Xenium cells, so we use SingleR as a spatial method here. For details on how to use SingleR, please refer to its [online book](https://bioconductor.org/books/release/SingleRBook/). 
 
 ```{r}
-plotDimRed(xe, plot_type = "UMAP", annotate = "SingleR.labels",
-text_by = "SingleR.labels”, pal = colors, point_size = 0.1)
+singlerlabels <- read.csv(here::here("./inst/extdata/computation_results/SingleR_cell_annotations.csv"), row.names = 1)
+head(singlerlabels)
 ```
+
+Our SingleR cell type recognition step were run on post QC objects, so there is a dimension mismatch with the raw Xenium replicate 1 object stored in STexampleData. We need to subset our raw Xenium object to post QC spots, and to merge in the clustering result by cell name for plotting. 
+```{r}
+dim(singlerlabels)
+dim(xe1)
+nrow(singlerlabels) == ncol(xe1)
+```
+
+After subset to post QC cells, the number of cells match. 
+```{r}
+xe1 <- xe1[, colnames(xe1) %in% rownames(singlerlabels)]
+dim(xe1)
+nrow(singlerlabels) == ncol(xe1)
+```
+
+First, we check if the SingleR result has the same order of cell names as those in our Xenium object. Then, we merge in the cell type label column to `colData()`.
+```{r}
+all.equal(rownames(singlerlabels), colnames(xe1))
+xe1$SingleR.labels <- as.factor(singlerlabels$SingleR.labels)
+table(xe1$SingleR.labels)
+```
+
+```{r, fig.width=6.5, fig.height=5, message=FALSE}
+plotSpots(xe1, annotate = "SingleR.labels", pal = celltype_colors, 
+          in_tissue = NULL, x_coord = "x_centroid", y_coord = "y_centroid",
+          point_size = 0.01) + coord_flip() + scale_x_reverse() + 
+  guides(fill=guide_legend(ncol = 2, override.aes = list(size = 2)))
+
+```
+
+We quickly obtain the UMAP of Xenium by running log normalization, PCA, and UMAP. 
+
+```{r}
+# xe1 <- sctransform::vst(counts(xe1), vst.flavor = "v2")$y
+xe1 <- scater::logNormCounts(xe1)
+set.seed(100)
+xe1 <- scater::runPCA(xe1)
+set.seed(100)
+xe1 <- scater::runUMAP(xe1)
+```
+
+We can also visualize the cell type clusters in the reduced dimension. 
+```{r, fig.width=10, fig.height=10}
+plotDimRed(xe1, plot_type = "UMAP", annotate = "SingleR.labels", 
+           text_by = "SingleR.labels", pal = celltype_colors, point_size = 0.01) + 
+  theme(legend.position = "none", 
+        panel.border = element_blank(), 
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank())
+```
+
+# References

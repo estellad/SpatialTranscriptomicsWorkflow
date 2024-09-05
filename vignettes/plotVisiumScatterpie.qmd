@@ -1,0 +1,95 @@
+---
+title: "plotVisiumScatterpie"
+format: html
+editor: visual
+date: '`r format(Sys.Date(), "%d %B, %Y")`'
+author: "Yixing Estella Dong"
+---
+
+## Load packages
+
+```{r}
+library(magick)
+library(ggplot2)
+library(dplyr)
+library(scatterpie)
+library(stringr)
+library(here)
+```
+
+## Load raw data
+Here we load data independently from `SpatialExperiment` object. 
+```{r}
+datapath <- here::here("./inst/extdata/visium_10xpaper_download/outs/spatial")
+scalef <- rjson::fromJSON(file = file.path(datapath, "scalefactors_json.json"))
+image <- image_read(file.path(datapath, "tissue_hires_image.png"))
+info <- image_info(image)
+
+vis$pxl_col_in_hires <- vis$pxl_col_fulres * scalef$tissue_hires_scalef
+vis$pxl_row_in_hires <- spatialCoords(vis)[, 2] * scalef$tissue_hires_scalef
+```
+
+## Plot the image layer
+```{r}
+p0 <- ggplot(
+  data.frame(x = 0, y = 0),
+  aes(x, y)
+) +
+  geom_blank() +
+  coord_fixed(
+    expand = FALSE,
+    xlim = c(min(vis$pxl_col_in_hires) - info$width * 0.05, max(vis$pxl_col_in_hires) + info$width * 0.05),
+    ylim = c(min(vis$pxl_row_in_hires) - info$height * 0.05, max(vis$pxl_row_in_hires) + info$height * 0.05)
+  ) +
+  annotation_raster(
+    image_flip(image),
+    0,
+    info$width,
+    0,
+    info$height
+  ) +
+  theme_bw()
+```
+
+## Load deconvolution fraction
+```{r}
+rctddecon <- read.csv(here::here("./inst/extdata/computation_results/RCTD_spot_decon.csv"), row.names = 1)
+colnames(rctddecon) <- sort(names(celltype_colors))
+
+location <- data.frame(x = vis$pxl_col_in_hires,
+                       y = vis$pxl_row_in_hires) 
+rownames(location) <- colnames(vis)
+colnames(location) <- c("x", "y")
+
+all.equal(rownames(rctddecon), colnames(vis))
+
+data = cbind(rctddecon, location)
+ct.select = colnames(rctddecon)
+
+radius <- scalef$spot_diameter_fullres * scalef$tissue_hires_scalef / 1.7
+```
+
+## Add layer of scatterpie
+```{r, fig.width=10, fig.height=5}
+p <- p0 + 
+  geom_scatterpie(aes(x = x, y = y, r = radius), 
+                  data = data, cols = ct.select, color = NA) + # coord_fixed(ratio = 1*max(data$x)/max(data$y)) + 
+  scale_fill_manual(values =  celltype_colors) +
+  theme(plot.margin = margin(0.1, 0.1, 0.1, 0.1, "cm"),
+        panel.background = element_blank(),
+        plot.background = element_blank(),
+        panel.border = element_rect(colour = "grey89", fill=NA, size=0.5),
+        axis.text =element_blank(),
+        axis.ticks =element_blank(),
+        axis.title =element_blank(),
+        legend.title=element_text(size = 16,face="bold"),
+        legend.text=element_text(size = 15),
+        legend.key = element_rect(colour = "transparent", fill = "white"),
+        legend.key.size = unit(0.45, 'cm'),
+        strip.text = element_text(size = 16,face="bold"),
+        legend.position="right")+
+  guides(fill=guide_legend(title="Cell Type", ncol = 1))
+p
+```
+
+

@@ -25,7 +25,7 @@ xe_predictions <- readRDS(file.path(data_path, "xe_SingleRpred.rds"))
 SingleR_results <- data.frame(SingleR.labels = xe_predictions$labels)
 rownames(SingleR_results) <- rownames(xe_predictions)
 
-write.csv(SingleR_results, here::here("./data/computation_results/SingleR_cell_annotation.csv"))       
+write.csv(SingleR_results, here::here("./data/computation_results/SingleR_cell_annotations.csv"))       
 
 
 

@@ -24,7 +24,7 @@ It serves a foundation for the upcoming workflow chapters in the [BestPracticesS
 
 ## Installation
 
-# SpatialTranscriptomicsWorkflow can be installed from GitHub as follows.
+SpatialTranscriptomicsWorkflow can be installed from GitHub as follows.
 
 ``` r
 # install.packages("devtools")
