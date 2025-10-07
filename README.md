@@ -20,7 +20,7 @@ It is also a continuation of the previous collaborative open source effort:
 
 [Orchestrating Spatially Resolved Transcriptomics Analysis with Bioconductor (OSTA)](https://bioc2021.bioconductor.org/posts/paper74/)
 
-It serves a foundation for the upcoming workflow chapters in the [BestPracticesST](https://lmweber.org/BestPracticesST/) book.
+It serves a foundation for the upcoming workflow chapters in the [OSTA](https://lmweber.org/OSTA/) book.
 
 ## Installation
 
